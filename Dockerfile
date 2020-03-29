@@ -1,6 +1,6 @@
 FROM rust:alpine AS builder
 
-RUN apk update && apk add build-base openssl-dev
+RUN apk update && apk add git build-base openssl-dev
 
 RUN git clone https://github.com/zbblanton/cloudflare_dynamic_dns_rust.git && \
     cd cloudflare_dynamic_dns_rust && \
