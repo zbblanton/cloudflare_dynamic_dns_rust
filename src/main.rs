@@ -7,10 +7,14 @@ use serde::Deserialize;
 use std::{thread, time, fmt, fs};
 use std::error::Error;
 
+use clap::{Arg, App};
 
 #[derive(Deserialize, Debug)]
 struct Config {
     cloudflare_api: CloudflareAPI,
+
+    #[serde(default)]
+    cron: bool,
 }
 
 #[derive(Deserialize, Debug)]
@@ -160,13 +164,81 @@ fn update_dns_record(config: &CloudflareAPI, record_id: String, new_ip: String) 
     Ok(())
 }
 
-fn main() -> Result<(), Box<dyn Error>>{
-    let config_file_contents = fs::read_to_string("config.json")
-        .expect("Could not read file!");
+// fn read_config() -> Result<Config, Box<dyn Error>> {
 
-    let config_file: Config = serde_json::from_str(&config_file_contents)?;
+// }
 
-    loop {
+fn main() -> Result<(), Box<dyn Error>> {
+    let matches = App::new("Cloudflare Dynamic DNS")
+        .about("Small program for dynamic DNS using Clouldflare.")
+        .arg(Arg::with_name("config")
+                 .value_name("config")
+                 .short("c")
+                 .long("config")
+                 .takes_value(true)
+                 .help("Location of config file"))
+        .arg(Arg::with_name("auth-email")
+                 .value_name("auth-email")
+                 .env("CLOUDFLARE_AUTH_EMAIL")
+                 .short("e")
+                 .long("auth-email")
+                 .required_unless("config")
+                 .takes_value(true)
+                 .help("Auth email for Cloudflare"))
+        .arg(Arg::with_name("api-key")
+                 .value_name("api-key")
+                 .env("CLOUDFLARE_API_KEY")
+                 .short("k")
+                 .long("api-key")
+                 .required_unless("config")
+                 .takes_value(true)
+                 .help("API key for Cloudflare"))
+        .arg(Arg::with_name("zone-id")
+                 .value_name("zone-id")
+                 .env("CLOUDFLARE_ZONE_ID")
+                 .short("z")
+                 .long("zone-id")
+                 .required_unless("config")
+                 .takes_value(true)
+                 .help("Zone ID that contains the DNS record for Cloudflare"))
+        .arg(Arg::with_name("record-name")
+                 .value_name("record-name")
+                 .env("CLOUDFLARE_RECORD_NAME")
+                 .short("n")
+                 .long("record-name")
+                 .required_unless("config")
+                 .takes_value(true)
+                 .help("DNS record name for Cloudflare"))
+        .arg(Arg::with_name("cron")
+                 .value_name("cron")
+                 .env("CLOUDFLARE_CRON")
+                 .short("r")
+                 .long("cron")
+                 .default_value("false")
+                 .takes_value(true)
+                 .help("Run only once and don't loop."))
+        .get_matches();
+    
+    let config_file: Config;
+    match matches.value_of("config") {
+        Some(path) => {
+            let config_file_contents = fs::read_to_string(path).expect("Could not read file!");
+            config_file = serde_json::from_str(&config_file_contents)?;
+        },
+        None =>  {
+            config_file = Config{
+                cloudflare_api: CloudflareAPI{
+                    auth_email:  matches.value_of("auth-email").unwrap().to_string(),
+                    api_key: matches.value_of("api-key").unwrap().to_string(),
+                    zone_id: matches.value_of("zone-id").unwrap().to_string(),
+                    dns_record_name: matches.value_of("record-name").unwrap().to_string(),
+                },
+                cron: matches.value_of("cron").unwrap().parse().unwrap(),
+            };
+        },
+    }
+
+    while {
         let public_ip = get_public_ip()?;
         println!("Public IP: ({})", public_ip);
 
@@ -182,5 +254,10 @@ fn main() -> Result<(), Box<dyn Error>>{
         }
 
         thread::sleep(time::Duration::from_secs(5));
-    }
+
+        //This returns a bool to the while loop, therefore acting like a do-while
+        !config_file.cron
+    } {}
+
+    Ok(())
 }
